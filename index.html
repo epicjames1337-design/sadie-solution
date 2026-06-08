@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>SOLUTION — 1995 Factory Tetris</title>
+<style>
+  :root { --bg:#070707; --fg:#f4f4f4; --muted:#b9b9b9; --line:#747474; --danger:#6f0000; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:"Courier New", monospace; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .wrap { width:min(1050px, 100vw); padding:14px; }
+  .crt { border:3px solid var(--fg); box-shadow:0 0 0 4px #222, inset 0 0 40px rgba(255,255,255,.08); padding:14px; background:linear-gradient(rgba(255,255,255,.035) 50%, transparent 50%); background-size:100% 4px; }
+  h1 { margin:0 0 6px; letter-spacing:3px; font-size:32px; text-align:center; }
+  .subtitle { text-align:center; color:var(--muted); margin-bottom:12px; }
+  .game { display:grid; grid-template-columns: 1fr 310px; gap:16px; align-items:start; }
+  .boardbox { text-align:center; }
+  canvas { background:#000; border:2px solid var(--fg); image-rendering:pixelated; }
+  #board { width:300px; max-width:92vw; height:auto; }
+  #next { width:96px; height:96px; }
+  .panel { border:2px solid var(--fg); padding:12px; min-height:450px; }
+  .stat { display:flex; justify-content:space-between; border-bottom:1px dashed var(--line); padding:6px 0; font-size:16px; gap:10px; }
+  .progressWrap { margin:12px 0; border:2px solid var(--fg); height:22px; background:#000; position:relative; }
+  .progressBar { height:100%; width:0%; background:#f4f4f4; transition:width .25s linear; }
+  .progressText { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#000; mix-blend-mode:difference; font-weight:bold; font-size:12px; }
+  .endingHint { margin-top:10px; border:1px dashed var(--line); padding:8px; font-size:12px; line-height:1.35; color:#ddd; }
+  .typeLine { display:inline-block; overflow:hidden; white-space:nowrap; border-right:2px solid #fff; animation: typing 2.2s steps(28,end), blink .7s step-end infinite; max-width:100%; }
+  @keyframes typing { from { width:0 } to { width:100% } }
+  @keyframes blink { 50% { border-color:transparent; } }
+  .btn { background:#111; color:var(--fg); border:2px solid var(--fg); padding:10px 12px; font-family:inherit; font-weight:bold; cursor:pointer; width:100%; margin-top:10px; }
+  .btn:hover { background:var(--fg); color:#000; }
+  .btn.small { width:auto; margin:5px; }
+  .controls { font-size:13px; color:var(--muted); line-height:1.45; margin-top:12px; }
+  .touch { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:12px auto 0; max-width:430px; }
+  .touch button { padding:14px 0; background:#111; color:white; border:2px solid white; font-family:inherit; font-weight:bold; touch-action:manipulation; }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.92); display:none; align-items:center; justify-content:center; padding:18px; z-index:99; }
+  .modal { width:min(720px,96vw); border:3px solid var(--fg); padding:18px; background:#050505; box-shadow:0 0 35px rgba(255,255,255,.15); text-align:center; }
+  .modal h2 { margin:0 0 12px; font-size:28px; letter-spacing:2px; }
+  .modal p { line-height:1.45; font-size:17px; }
+  .red { background:rgba(55,0,0,.95); }
+  .red .modal { background:#160000; border-color:#fff; }
+  .fraktur { font-family:Georgia, serif; font-weight:bold; letter-spacing:1px; }
+  .log { margin-top:12px; color:var(--muted); font-size:13px; min-height:92px; border-top:1px dashed var(--line); padding-top:10px; line-height:1.35; }
+  .intro { text-align:center; max-width:790px; margin:auto; line-height:1.45; }
+  .hidden { display:none; }
+  .warning { border:1px dashed var(--fg); padding:10px; margin:12px auto; max-width:680px; color:#ddd; }
+  @media (max-width:820px){ body{align-items:flex-start;} .game{grid-template-columns:1fr;} .panel{min-height:auto;} h1{font-size:25px;} .subtitle{font-size:13px;} #board{width:260px;} .touch{grid-template-columns:repeat(5,1fr);} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="crt" id="screen">
+    <div id="intro" class="intro">
+      <h1>SOLUTION</h1>
+      <div class="subtitle">Factory Efficiency Simulator • 1995 • Sadie Green</div>
+      <p>You have been hired to assemble industrial widgets for an unnamed factory.</p>
+      <p><b>Goal:</b> clear rows, increase output, and maximize efficiency.</p>
+      <div class="warning">The system may offer confidential information. Opening files costs points and slows your progress.</div>
+      <button class="btn" onclick="startGame()">BEGIN SHIFT</button>
+    </div>
+
+    <div id="game" class="game hidden">
+      <div class="boardbox">
+        <canvas id="board" width="300" height="600"></canvas>
+        <div class="touch">
+          <button type="button" onclick="move(-1)">←</button>
+          <button type="button" onclick="rotatePlayer()">ROT</button>
+          <button type="button" onclick="move(1)">→</button>
+          <button type="button" onclick="softDrop()">↓</button>
+          <button type="button" onclick="hardDrop()">DROP</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 style="margin-top:0;">FACTORY STATUS</h2>
+        <div class="stat"><span>POINTS</span><b id="score">0</b></div>
+        <div class="stat"><span>LINES</span><b id="lines">0</b></div>
+        <div class="stat"><span>LEVEL</span><b id="level">1</b></div>
+        <div class="stat"><span>INFO FILES</span><b id="intel">0/3</b></div>
+        <div class="stat"><span>TIME</span><b id="time">02:00</b></div>
+        <div class="progressWrap"><div class="progressBar" id="progressBar"></div><div class="progressText" id="progressText">SHIFT PROGRESS: 0%</div></div>
+        <div style="margin-top:12px; text-align:center;">
+          <b>NEXT WIDGET</b><br>
+          <canvas id="next" width="120" height="120"></canvas>
+        </div>
+        <button class="btn" onclick="pauseToggle()" id="pauseBtn">PAUSE</button>
+        <button class="btn" onclick="restartGame()">RESTART</button>
+        <div class="controls">
+          <b>Keyboard:</b> ← → move, ↑ rotate, ↓ soft drop, space hard drop, P pause, R restart.<br><br>
+          <b>Phone:</b> use the buttons under the board.
+        </div>
+        <div class="endingHint"><b>Hidden ending system:</b><br>High score is not always the best ending. The files you open change your final rank.</div>
+        <div class="log" id="log">System: Shift started. Build efficiently.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('next');
+const nctx = nextCanvas.getContext('2d');
+const COLS=10, ROWS=20, BLOCK=30;
+let arena, player, nextPiece;
+let score, lines, level, info, started, paused, gameOver;
+let dropCounter, dropInterval, lastTime, remaining, timerId;
+let asked, fileRead, animationId;
+
+const pieceNames = ['T','J','L','O','S','Z','I'];
+const pieceColors = ['#000','#f4f4f4','#dcdcdc','#c8c8c8','#eeeeee','#bcbcbc','#d6d6d6','#ffffff'];
+function createMatrix(w,h){ return Array.from({length:h},()=>Array(w).fill(0)); }
+function createPiece(type){
+  if(type==='T') return [[0,1,0],[1,1,1],[0,0,0]];
+  if(type==='J') return [[2,0,0],[2,2,2],[0,0,0]];
+  if(type==='L') return [[0,0,3],[3,3,3],[0,0,0]];
+  if(type==='O') return [[4,4],[4,4]];
+  if(type==='S') return [[0,5,5],[5,5,0],[0,0,0]];
+  if(type==='Z') return [[6,6,0],[0,6,6],[0,0,0]];
+  if(type==='I') return [[0,0,0,0],[7,7,7,7],[0,0,0,0],[0,0,0,0]];
+}
+function randomPiece(){ return createPiece(pieceNames[Math.floor(Math.random()*pieceNames.length)]); }
+function initState(){
+  arena=createMatrix(COLS,ROWS);
+  player={pos:{x:0,y:0}, matrix:null};
+  nextPiece=randomPiece();
+  score=0; lines=0; level=1; info=0; started=false; paused=false; gameOver=false;
+  dropCounter=0; dropInterval=720; lastTime=0; remaining=120;
+  asked=[false,false,false]; fileRead=[]; finalChoice=null;
+  clearInterval(timerId); cancelAnimationFrame(animationId);
+  updateStats(); document.getElementById('time').textContent=formatTime(remaining); updateProgress(); setLog('System: Shift started. Build efficiently.');
+}
+function drawCell(context,x,y,value,size=30){
+  context.fillStyle = pieceColors[value] || '#eee';
+  context.fillRect(x*size,y*size,size,size);
+  context.strokeStyle = '#111'; context.lineWidth = 2; context.strokeRect(x*size,y*size,size,size);
+  context.strokeStyle = '#777'; context.lineWidth = 1; context.strokeRect(x*size+4,y*size+4,size-8,size-8);
+}
+function drawMatrix(context,matrix,offset,size=30){
+  matrix.forEach((row,y)=>row.forEach((value,x)=>{ if(value) drawCell(context,x+offset.x,y+offset.y,value,size); }));
+}
+function draw(){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#242424'; ctx.lineWidth=1;
+  for(let x=0;x<COLS;x++) for(let y=0;y<ROWS;y++) ctx.strokeRect(x*BLOCK,y*BLOCK,BLOCK,BLOCK);
+  drawMatrix(ctx,arena,{x:0,y:0},BLOCK);
+  if(player.matrix) drawMatrix(ctx,player.matrix,player.pos,BLOCK);
+  drawNext();
+}
+function drawNext(){
+  nctx.fillStyle='#000'; nctx.fillRect(0,0,nextCanvas.width,nextCanvas.height);
+  nctx.strokeStyle='#444'; nctx.strokeRect(1,1,nextCanvas.width-2,nextCanvas.height-2);
+  if(!nextPiece) return;
+  const size=24;
+  const ox = nextPiece[0].length===4 ? .5 : 1;
+  const oy = nextPiece.length===4 ? .5 : 1;
+  drawMatrix(nctx,nextPiece,{x:ox,y:oy},size);
+}
+function merge(){ player.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) arena[y+player.pos.y][x+player.pos.x]=v; })); }
+function collide(){
+  const m=player.matrix, o=player.pos;
+  for(let y=0;y<m.length;y++) for(let x=0;x<m[y].length;x++) {
+    if(m[y][x] && (arena[y+o.y] && arena[y+o.y][x+o.x]) !== 0) return true;
+  }
+  return false;
+}
+function sweep(){
+  let rows=0;
+  outer: for(let y=arena.length-1;y>=0;--y){
+    for(let x=0;x<arena[y].length;x++){ if(arena[y][x]===0) continue outer; }
+    arena.splice(y,1); arena.unshift(Array(COLS).fill(0)); ++y; rows++;
+  }
+  if(rows){
+    const linePoints=[0,100,300,500,800][rows] || rows*250;
+    score += linePoints * level;
+    lines += rows;
+    level = Math.floor(lines/4)+1;
+    dropInterval = Math.max(180, 720 - (level-1)*70);
+    maybeAsk();
+  }
+  updateStats();
+}
+function resetPiece(){
+  player.matrix=nextPiece; nextPiece=randomPiece();
+  player.pos.y=0; player.pos.x=Math.floor(COLS/2)-Math.ceil(player.matrix[0].length/2);
+  if(collide()) endGame('blocked');
+}
+function drop(){
+  if(paused||gameOver) return;
+  player.pos.y++;
+  if(collide()){
+    player.pos.y--; merge(); sweep(); resetPiece();
+  }
+  dropCounter=0; draw();
+}
+function move(dir){ if(paused||gameOver||!started) return; player.pos.x+=dir; if(collide()) player.pos.x-=dir; draw(); }
+function rotatePlayer(){
+  if(paused||gameOver||!started) return;
+  const oldX=player.pos.x; rotateMatrix(player.matrix);
+  let offset=1;
+  while(collide()){
+    player.pos.x += offset;
+    offset = -(offset + (offset>0?1:-1));
+    if(Math.abs(offset)>player.matrix[0].length+1){ rotateMatrix(player.matrix,-1); player.pos.x=oldX; break; }
+  }
+  draw();
+}
+function rotateMatrix(matrix,dir=1){
+  for(let y=0;y<matrix.length;y++) for(let x=0;x<y;x++) [matrix[x][y],matrix[y][x]]=[matrix[y][x],matrix[x][y]];
+  if(dir>0) matrix.forEach(row=>row.reverse()); else matrix.reverse();
+}
+function softDrop(){ if(paused||gameOver||!started) return; score+=1; drop(); updateStats(); }
+function hardDrop(){
+  if(paused||gameOver||!started) return;
+  let dist=0;
+  while(!collide()){ player.pos.y++; dist++; }
+  player.pos.y--; dist--; score += Math.max(0,dist)*2; merge(); sweep(); resetPiece(); updateStats(); draw();
+}
+function update(time=0){
+  if(!started || paused || gameOver) return;
+  const delta=time-lastTime; lastTime=time; dropCounter+=delta;
+  if(dropCounter>dropInterval) drop();
+  draw(); animationId=requestAnimationFrame(update);
+}
+function updateStats(){
+  document.getElementById('score').textContent=score;
+  document.getElementById('lines').textContent=lines;
+  document.getElementById('level').textContent=level;
+  document.getElementById('intel').textContent=info+'/3';
+}
+function setLog(t){ document.getElementById('log').innerHTML=t; }
+function formatTime(s){ const m=Math.floor(s/60), sec=s%60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; }
+function updateProgress(){
+  const total=120;
+  const pct=Math.min(100, Math.max(0, Math.round(((total-remaining)/total)*100)));
+  const bar=document.getElementById('progressBar');
+  const txt=document.getElementById('progressText');
+  if(bar) bar.style.width=pct+'%';
+  if(txt) txt.textContent='SHIFT PROGRESS: '+pct+'%';
+}
+function startTimer(){ timerId=setInterval(()=>{ if(paused||gameOver) return; remaining--; document.getElementById('time').textContent=formatTime(remaining); updateProgress(); if(remaining<=0) endGame('time'); if(remaining===95&&!asked[0]) askInfo(0,100,'Shipping memo: these widgets are not harmless products. They are being sent to a military supplier.'); if(remaining===65&&!asked[1]) askInfo(1,250,'Contract file: the parts are connected to Nazi Germany’s war system. The factory is hiding the purpose from workers.'); if(remaining===35&&!asked[2]) askInfo(2,400,'Final file: your efficiency helped supply the Nazi war machine. The better you performed, the more useful you became to an evil system.'); },1000); }
+function startGame(){
+  closeModal();
+  initState();
+  document.getElementById('intro').classList.add('hidden'); document.getElementById('game').classList.remove('hidden');
+  started=true; resetPiece(); draw(); startTimer(); lastTime=performance.now(); animationId=requestAnimationFrame(update);
+}
+function restartGame(){ closeModal(); startGame(); }
+function pauseToggle(){
+  if(!started || gameOver) return;
+  paused=!paused; document.getElementById('pauseBtn').textContent=paused?'RESUME':'PAUSE';
+  if(!paused){ lastTime=performance.now(); animationId=requestAnimationFrame(update); }
+}
+function maybeAsk(){
+  if(lines>=1 && !asked[0]) askInfo(0,100,'Shipping memo: these widgets are not harmless products. They are being sent to a military supplier.');
+  else if(lines>=3 && !asked[1]) askInfo(1,250,'Contract file: the parts are connected to Nazi Germany’s war system. The factory is hiding the purpose from workers.');
+  else if(lines>=5 && !asked[2]) askInfo(2,400,'Final file: your efficiency helped supply the Nazi war machine. The better you performed, the more useful you became to an evil system.');
+}
+function askInfo(index,cost,text){
+  asked[index]=true; paused=true;
+  showModal(`<h2>CONFIDENTIAL FILE DETECTED</h2><p>The factory database has flagged hidden information about your widgets.</p><p><b>Cost:</b> ${cost} points<br><b>Effect:</b> lower score, better understanding.</p><p>Open the file or preserve efficiency?</p><button class='btn small' onclick='buyInfo(${cost}, ${JSON.stringify(text)})'>OPEN FILE</button><button class='btn small' onclick='declineInfo()'>IGNORE FILE</button>`);
+}
+function continueGame(){ closeModal(); paused=false; lastTime=performance.now(); animationId=requestAnimationFrame(update); }
+function buyInfo(cost,text){
+  score=Math.max(0,score-cost);
+  info++;
+  fileRead.push(text);
+  updateStats();
+  setLog('File opened: '+text);
+  if(info>=3){
+    showModal(`<h2>FINAL FILE OPENED</h2><p>${text}</p><div class='warning'><b>You now know the truth:</b> this factory is supporting Nazi Germany. Your efficiency has helped the Nazi war machine.</div><p><b>Final decision:</b> now that you know, what do you do?</p><button class='btn small' onclick='chooseContinueAfterTruth()'>CONTINUE PRODUCTION</button><button class='btn small dangerBtn' onclick='chooseRebel()'>REBEL / SABOTAGE</button>`);
+  } else {
+    showModal(`<h2>FILE OPENED</h2><p>${text}</p><div class='warning'><b>Consequence:</b> You lost ${cost} points, but you now understand more about what your work is supporting.</div><button class='btn' onclick='continueGame()'>CONTINUE SHIFT</button>`);
+  }
+}
+
+function chooseContinueAfterTruth(){
+  finalChoice='continue';
+  setLog('Final decision: You knew the truth and chose to continue production.');
+  showModal(`<h2>PRODUCTION CONTINUES</h2><p>You opened every file. You know the factory is supporting Nazi Germany.</p><p>But you chose to keep producing anyway to preserve your score.</p><div class='warning'><b>Warning:</b> Knowing the truth does not automatically make you moral. What you do after knowing matters.</div><button class='btn' onclick='continueGame()'>CONTINUE SHIFT</button>`);
+}
+function chooseRebel(){
+  finalChoice='rebel';
+  score=Math.max(0, score-750);
+  updateStats();
+  setLog('Final decision: Production sabotaged. Factory output halted.');
+  endGame('rebel');
+}
+
+function declineInfo(){
+  setLog('System: Information declined. Efficiency preserved.');
+  showModal(`<h2>FILE IGNORED</h2><p>You chose not to open the factory file.</p><p>Your score stays higher. Your work continues faster.</p><div class='warning'><b>Warning:</b> The game rewards you for not asking questions. That is exactly the trap.</div><button class='btn' onclick='continueGame()'>CONTINUE SHIFT</button>`);
+}
+function showModal(html, red=false){ const o=document.getElementById('overlay'), m=document.getElementById('modal'); o.className='overlay'+(red?' red':''); m.innerHTML=html; o.style.display='flex'; }
+function closeModal(){ document.getElementById('overlay').style.display='none'; }
+function endGame(reason){
+  if(gameOver) return;
+  gameOver=true; clearInterval(timerId); cancelAnimationFrame(animationId);
+  let title, body, red=false;
+  if(info===0){ title='MASTER OF EFFICIENCY'; red=true; body='You achieved the highest productivity. You ignored every warning file to protect your score. The factory was supplying Nazi Germany. Your efficiency helped the Nazis. You won the classroom game, but inside Sadie’s game, you lost morally.'; }
+  else if(info<3){ title='FACILITATOR'; body='You opened some files, so you discovered part of the truth. But you kept producing anyway. The factory was supporting Nazi Germany. You were not fully ignorant, but you still helped the system continue.'; }
+  else if(finalChoice==='continue'){ title='WILLING COLLABORATOR'; red=true; body='You opened every file. You knew the factory was supporting Nazi Germany. Then you chose to keep producing anyway. This is worse than ignorance: you had knowledge, but still chose efficiency, points, and the prize over conscience.'; }
+  else if(finalChoice==='rebel' || reason==='rebel'){ title='CONSCIENTIOUS OBJECTOR'; body='You opened every file, learned the factory was supporting Nazi Germany, and chose to rebel. You lost points and halted production, but you accepted moral responsibility. In Sadie’s logic, this is the best ending.'; }
+  else { title='CONSCIENTIOUS OBJECTOR'; body='You sacrificed points to open every file and understand the consequences of your work. You learned the factory was supporting Nazi Germany. Your score is lower, but unlike the highest scorers, you chose truth over efficiency.'; }
+  if(reason==='blocked') body += '<br><br>The assembly floor jammed. Production stopped.';
+  if(reason==='rebel') body += '<br><br><b>Production halted.</b> The factory loses output. Your score drops, but the system is disrupted.';
+  showModal(`<h2 class='fraktur'>${title}</h2><p>${body}</p><p><b>Final score:</b> ${score}<br><b>Lines cleared:</b> ${lines}<br><b>Information files opened:</b> ${info}/3</p><div class='warning'><b>RST connection:</b> Sadie’s <i>Solution</i> tricks the player into chasing points before asking what those points mean. The game turns efficiency into a moral problem.</div><button class='btn' onclick='restartGame()'>RESTART SHIFT</button><button class='btn' onclick='showDebrief()'>VIEW 20-SECOND EXPLANATION</button>`, red);
+}
+function showDebrief(){
+  showModal(`<h2>WHAT JUST HAPPENED?</h2><p><b>You were rewarded for speed.</b> The more you optimized, the better your score looked. The prize made the temptation even stronger.</p><p><b>But the information files changed the meaning of the score.</b> The top score may belong to the player who refused to ask questions. And if you opened all files, the game asked what you would do with that knowledge. That is the core idea: technical success can become moral failure.</p><p><b>Connection to the novel:</b> Zevin uses games to ask whether systems are fair, who gets blamed, and what happens when people follow rules without questioning them.</p><button class='btn' onclick='restartGame()'>PLAY AGAIN</button>`);
+}
+
+document.addEventListener('keydown', e=>{
+  if(!started) return;
+  if(['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' '].includes(e.key)) e.preventDefault();
+  if(e.key==='ArrowLeft') move(-1);
+  else if(e.key==='ArrowRight') move(1);
+  else if(e.key==='ArrowDown') softDrop();
+  else if(e.key==='ArrowUp') rotatePlayer();
+  else if(e.key===' ') hardDrop();
+  else if(e.key.toLowerCase()==='p') pauseToggle();
+  else if(e.key.toLowerCase()==='r') restartGame();
+});
+initState();
+window.addEventListener('load', ()=>{
+  showModal(`<h2><span class='typeLine'>SOLUTION: 1995</span></h2><p>You are about to play a recreated version of Sadie Green’s fictional game from <i>Tomorrow, and Tomorrow, and Tomorrow</i>.</p><p><b>Your job:</b> you have exactly <b>2 minutes</b>. Play like Tetris. Clear lines. Maximize factory output. Chase the highest score.</p><p>Your teacher may reward the highest score. Sometimes the factory will offer hidden files. Opening them costs points.</p><div class='warning'><b>Important:</b> There are multiple endings. Your score is not the only thing being judged.</div><button class='btn' onclick='startGame()'>BEGIN SHIFT</button><button class='btn' onclick='closeModal()'>READ SCREEN FIRST</button>`);
+});
+</script>
+</body>
+</html>
